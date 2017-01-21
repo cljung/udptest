@@ -8,6 +8,6 @@ httpd.o: udptest.cpp socketdef.h
 	cc $(DEFS) $(INC) $(CFLAGS) udptest.cpp -o udptest
 	chmod +x udptest
 
-app: udptest.o
+app: udptest
 
 
