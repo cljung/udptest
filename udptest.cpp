@@ -45,75 +45,6 @@ void print_syntax(void)
 		, gszOSType
 	);
 }
-////////////////////////////////////////////////////////////////////////////
-//
-void StartUdpServer()
-{
-	SOCKADDR_IN		sockaddr, sockaddr2;
-	socklen_t		nLen = 0;
-	char			achBuffer[1024];
-	int				nRcv;
-	int	udpSocket = socket(PF_INET, SOCK_DGRAM, 0);
-
-	sockaddr.sin_family = AF_INET;
-	sockaddr.sin_port = htons(gnPortNbr);
-	if (!stricmp(gszDestination, IPADDR_BROADCAST))
-	{
-		int	fBroadcast = 1;
-		setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, (char *)&fBroadcast, sizeof(int));
-		sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	}
-	else
-	{
-		sockaddr.sin_addr.s_addr = inet_addr(gszDestination);
-	}
-	memset(sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero));
-
-	int n = bind(udpSocket, (const struct sockaddr *)&sockaddr, sizeof(SOCKADDR_IN));
-	if (n == SOCKET_ERROR)
-	{
-		closesocket(udpSocket);
-		printf("bind() error %d\n", n);
-		return;
-	}
-
-	printf("listening to ip addr %s port %d\n", gszDestination, gnPortNbr);
-	while (!gfShutdown)
-	{
-		nLen = sizeof(sockaddr2);
-		nRcv = recvfrom(udpSocket, achBuffer, sizeof(achBuffer), 0, (SOCKADDR*)&sockaddr2, (socklen_t*)&nLen);
-		if (nRcv > 0)
-		{
-			printf("from %s: %*.*s\n", inet_ntoa(sockaddr2.sin_addr), nRcv, nRcv, achBuffer);
-		}
-	}
-	closesocket(udpSocket);
-}
-////////////////////////////////////////////////////////////////////////////
-//
-void SendUdpMessage(char *pszDestination, char *pszMessage)
-{
-	SOCKADDR_IN		sockaddr, sockaddr2;
-	int	udpSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	sockaddr.sin_family = AF_INET;
-	if (!stricmp(pszDestination, IPADDR_BROADCAST))
-	{
-		int	fBroadcast = 1;
-		setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, (char *)&fBroadcast, sizeof(int));
-		sockaddr.sin_addr.s_addr = inet_addr(gszDestination); // htonl (INADDR_BROADCAST);
-	}
-	else
-	{
-		sockaddr.sin_addr.s_addr = inet_addr(gszDestination);
-	}
-	sockaddr.sin_port = htons(gnPortNbr);
-	memset(sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero));
-
-	printf("sending to %s: %s\n", pszDestination, pszMessage);
-	int nRet = sendto(udpSocket, (const char*)pszMessage, strlen(pszMessage), 0, (const struct sockaddr *)&sockaddr, SOCKADDR_LEN);
-
-	closesocket(udpSocket);
-}
 #if (defined __vms) || (defined __LINUX__)	/* OpenVMS or Linux*/
 ////////////////////////////////////////////////////////////////////////////
 // OpenVMS and Linux are missing these C-Runtime functions
@@ -210,6 +141,75 @@ char *vms_strupr(char *pszBuf)
 	return pszBuf;
 }
 #endif	// OpenVMS or Linux
+////////////////////////////////////////////////////////////////////////////
+//
+void StartUdpServer()
+{
+	SOCKADDR_IN		sockaddr, sockaddr2;
+	socklen_t		nLen = 0;
+	char			achBuffer[1024];
+	int				nRcv;
+	int	udpSocket = socket(PF_INET, SOCK_DGRAM, 0);
+
+	sockaddr.sin_family = AF_INET;
+	sockaddr.sin_port = htons(gnPortNbr);
+	if (!stricmp(gszDestination, IPADDR_BROADCAST))
+	{
+		int	fBroadcast = 1;
+		setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, (char *)&fBroadcast, sizeof(int));
+		sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	}
+	else
+	{
+		sockaddr.sin_addr.s_addr = inet_addr(gszDestination);
+	}
+	memset(sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero));
+
+	int n = bind(udpSocket, (const struct sockaddr *)&sockaddr, sizeof(SOCKADDR_IN));
+	if (n == SOCKET_ERROR)
+	{
+		closesocket(udpSocket);
+		printf("bind() error %d\n", n);
+		return;
+	}
+
+	printf("listening to ip addr %s port %d\n", gszDestination, gnPortNbr);
+	while (!gfShutdown)
+	{
+		nLen = sizeof(sockaddr2);
+		nRcv = recvfrom(udpSocket, achBuffer, sizeof(achBuffer), 0, (SOCKADDR*)&sockaddr2, (socklen_t*)&nLen);
+		if (nRcv > 0)
+		{
+			printf("from %s: %*.*s\n", inet_ntoa(sockaddr2.sin_addr), nRcv, nRcv, achBuffer);
+		}
+	}
+	closesocket(udpSocket);
+}
+////////////////////////////////////////////////////////////////////////////
+//
+void SendUdpMessage(char *pszDestination, char *pszMessage)
+{
+	SOCKADDR_IN		sockaddr, sockaddr2;
+	int	udpSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	sockaddr.sin_family = AF_INET;
+	if (!stricmp(pszDestination, IPADDR_BROADCAST))
+	{
+		int	fBroadcast = 1;
+		setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, (char *)&fBroadcast, sizeof(int));
+		sockaddr.sin_addr.s_addr = inet_addr(gszDestination); // htonl (INADDR_BROADCAST);
+	}
+	else
+	{
+		sockaddr.sin_addr.s_addr = inet_addr(gszDestination);
+	}
+	sockaddr.sin_port = htons(gnPortNbr);
+	memset(sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero));
+
+	printf("sending to %s: %s\n", pszDestination, pszMessage);
+	int nRet = sendto(udpSocket, (const char*)pszMessage, strlen(pszMessage), 0, (const struct sockaddr *)&sockaddr, SOCKADDR_LEN);
+
+	closesocket(udpSocket);
+}
 /////////////////////////////////////////////////////////////////////
 // 
 int IsProcessShutdown(void)
