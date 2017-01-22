@@ -6,12 +6,10 @@
 
 #include "socketdef.h"
 
-#define FREE(p) ( p ? free(p), p = 0 : p )
+#define IPADDR_BROADCAST	"255.255.255.255"
 
+char			gszOSType[40] = { "" };
 char			gszParam[64] = { 0 };
-int				gfTrace = 0;
-long			gnLogLevel = 1;
-
 static char		gszPort[32] = { 0 };
 static bool		gfServerMode = false;
 static bool		gfClientMode = false;
@@ -33,17 +31,88 @@ typedef struct tagCLIENTSOCKADDR {
 void print_syntax(void)
 {
 	printf("\n"
-		"syntax: udptest [-c|-s] [-port Nbr] [-to ipaddr] [-msg m]\n"
+		"%s\n"
+		"syntax: udptest [-c|--client|-s|--server] [-p|--port Nbr] [-i|--ip ipaddr] [-m|--msg m]\n"
 		"\n"
 		"where\n"
 		"\n"
 		"s             start in server/listening mode\n"
 		"c             start in client/sending mode\n"
-		"port          udp port to use (default is 5080)\n"
-		"to            ip address to send to - OR - 255.255.255.255 to broadcast\n"
-		"msg           message to send\n"
+		"p             udp port to use (default is 5080)\n"
+		"i             ip address to send to - OR - 255.255.255.255 to broadcast\n"
+		"m             message to send\n"
 		"\n"
+		, gszOSType
 	);
+}
+////////////////////////////////////////////////////////////////////////////
+//
+void StartUdpServer()
+{
+	SOCKADDR_IN		sockaddr, sockaddr2;
+	socklen_t		nLen = 0;
+	char			achBuffer[1024];
+	int				nRcv;
+	int	udpSocket = socket(PF_INET, SOCK_DGRAM, 0);
+
+	sockaddr.sin_family = AF_INET;
+	sockaddr.sin_port = htons(gnPortNbr);
+	if (!stricmp(gszDestination, IPADDR_BROADCAST))
+	{
+		int	fBroadcast = 1;
+		setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, (char *)&fBroadcast, sizeof(int));
+		sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	}
+	else
+	{
+		sockaddr.sin_addr.s_addr = inet_addr(gszDestination);
+	}
+	memset(sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero));
+
+	int n = bind(udpSocket, (const struct sockaddr *)&sockaddr, sizeof(SOCKADDR_IN));
+	if (n == SOCKET_ERROR)
+	{
+		closesocket(udpSocket);
+		printf("bind() error %d\n", n);
+		return;
+	}
+
+	printf("listening to ip addr %s port %d\n", gszDestination, gnPortNbr);
+	while (!gfShutdown)
+	{
+		nLen = sizeof(sockaddr2);
+		nRcv = recvfrom(udpSocket, achBuffer, sizeof(achBuffer), 0, (SOCKADDR*)&sockaddr2, (socklen_t*)&nLen);
+		if (nRcv > 0)
+		{
+			printf("from %s: %*.*s\n", inet_ntoa(sockaddr2.sin_addr), nRcv, nRcv, achBuffer);
+		}
+	}
+	closesocket(udpSocket);
+}
+////////////////////////////////////////////////////////////////////////////
+//
+void SendUdpMessage(char *pszDestination, char *pszMessage)
+{
+	SOCKADDR_IN		sockaddr, sockaddr2;
+	int	udpSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	sockaddr.sin_family = AF_INET;
+	if (!stricmp(pszDestination, IPADDR_BROADCAST))
+	{
+		int	fBroadcast = 1;
+		setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, (char *)&fBroadcast, sizeof(int));
+		sockaddr.sin_addr.s_addr = inet_addr(gszDestination); // htonl (INADDR_BROADCAST);
+	}
+	else
+	{
+		sockaddr.sin_addr.s_addr = inet_addr(gszDestination);
+	}
+	sockaddr.sin_port = htons(gnPortNbr);
+	memset(sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero));
+
+	printf("sending to %s: %s\n", pszDestination, pszMessage);
+	int nRet = sendto(udpSocket, (const char*)pszMessage, strlen(pszMessage), 0, (const struct sockaddr *)&sockaddr, SOCKADDR_LEN);
+
+	closesocket(udpSocket);
 }
 #if (defined __vms) || (defined __LINUX__)	/* OpenVMS or Linux*/
 ////////////////////////////////////////////////////////////////////////////
@@ -170,6 +239,7 @@ void signal_handler(int sig)
 {
 	printf("\nCtrl+C pressed - exiting (sig=%d)...\n", sig);
 	SetProcessShutdownFlag(1, (const char*)"Ctrl+C pressed");
+	SendUdpMessage( gszDestination, "Ctrl+C - time to exit");
 }
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -177,27 +247,29 @@ int check_param(char *pszParam, char *pszValue)
 {
 	int	nRc = 1;
 
+	if (*pszParam == '-' && *(pszParam+1) == '-')
+		pszParam += 2;
+
 	if (*pszParam == '-' || *pszParam == '/')
 		pszParam++;
 
-	if (!stricmp(pszParam, "port") && pszValue)
+	if ((!stricmp(pszParam, "p") || !stricmp(pszParam, "port")) && pszValue)
 	{
 		gnPortNbr = atoi(pszValue);
-		sprintf(gszParam, "-port %d", gnPortNbr);
 	}
-	if (!stricmp(pszParam, "c") )
+	if (!stricmp(pszParam, "c") || !stricmp(pszParam, "client"))
 	{
 		gfServerMode = false;
 		gfClientMode = true;
 	}
-	if (!stricmp(pszParam, "s") )
+	if (!stricmp(pszParam, "s") || !stricmp(pszParam, "server"))
 	{
 		gfServerMode = true;
 		gfClientMode = false;
 	}
-	if (!stricmp(pszParam, "to") && pszValue)
+	if ((!stricmp(pszParam, "i") || !stricmp(pszParam, "ip") ) && pszValue)
 		strcpy(gszDestination, pszValue);
-	if (!stricmp(pszParam, "msg") && pszValue)
+	if ((!stricmp(pszParam, "msg") || !stricmp(pszParam, "m")) && pszValue)
 		gpszMsg = pszValue;
 
 	return nRc;
@@ -208,18 +280,18 @@ int global_init(int argc, char *argv[])
 {
 	int		n;
 #ifdef _MSC_VER
-	char	szType[] = { "Windows" };
+	strcpy( gszOSType, "Windows" );
 #elif (defined __vms) /* OpenVMS */
-	char	szType[] = { "OpenVMS" };
+	strcpy(gszOSType, "OpenVMS" );
 #elif (defined __APPLE__) /* Mac includes */
-	char	szType[] = { "Mac OS" };
+	strcpy(gszOSType, "Mac OS" );
 #elif (defined __LINUX__) /* Linux/UNIX includes */
-	char	szType[] = { "Linux" };
+	strcpy(gszOSType, "Linux" );
 #else
-	char	szType[] = { "Other OS" };
+	strcpy(gszOSType, "Other OS" );
 #endif
 
-	if (argc >= 2 && (!strcmp(argv[1], "/?") || !strcmp(argv[1], "-?")))
+	if (argc >= 2 && (!strcmp(argv[1], "/?") || !strcmp(argv[1], "-?") || !strcmp(argv[1], "-h") || !strcmp(argv[1], "--help") ))
 	{
 		print_syntax();
 		exit(0);
@@ -266,74 +338,6 @@ int global_exit(void)
 }
 ////////////////////////////////////////////////////////////////////////////
 //
-void StartUdpServer()
-{
-	SOCKADDR_IN		sockaddr, sockaddr2;
-	socklen_t		nLen = 0;
-	char			achBuffer[1024];
-	int				nRcv;
-	int	udpSocket = socket(PF_INET, SOCK_DGRAM, 0);
-
-	sockaddr.sin_family = AF_INET;
-	sockaddr.sin_port = htons(gnPortNbr);
-	if (!stricmp(gszDestination, "255.255.255.255"))
-	{
-		int	fBroadcast = 1;
-		setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, (char *)&fBroadcast, sizeof(int));
-		sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	}
-	else 
-	{
-		sockaddr.sin_addr.s_addr = inet_addr(gszDestination);
-	}
-	memset( sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero) );
-
-	int n = bind( udpSocket, (const struct sockaddr *)&sockaddr, sizeof(SOCKADDR_IN) );
-	if (n == SOCKET_ERROR)
-	{
-		closesocket( udpSocket );
-		printf("bind() error %d\n", n);
-		return;
-	}
-
-	while ( !gfShutdown )
-	{
-		nLen = sizeof(sockaddr2);
-		nRcv = recvfrom(udpSocket, achBuffer, sizeof(achBuffer), 0, (SOCKADDR*)&sockaddr2, (socklen_t*)&nLen);
-		if (nRcv > 0)
-		{
-			printf("from %s: %*.*s\n", inet_ntoa(sockaddr2.sin_addr), nRcv, nRcv, achBuffer);
-		}
-	}
-	closesocket(udpSocket);
-}
-////////////////////////////////////////////////////////////////////////////
-//
-void RunUdpClient()
-{
-	SOCKADDR_IN		sockaddr, sockaddr2;
-	int	udpSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP );
-	sockaddr.sin_family = AF_INET;
-	if (!stricmp(gszDestination, "255.255.255.255"))
-	{
-		int	fBroadcast = 1;
-		setsockopt( udpSocket, SOL_SOCKET, SO_BROADCAST, (char *)&fBroadcast, sizeof(int));
-		sockaddr.sin_addr.s_addr = inet_addr(gszDestination); // htonl (INADDR_BROADCAST);
-	}
-	else
-	{
-		sockaddr.sin_addr.s_addr = inet_addr(gszDestination);
-	}
-	sockaddr.sin_port = htons(gnPortNbr);
-	memset(sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero));
-
-	printf("sending to %s: %s\n", gszDestination, gpszMsg);
-	int nRet = sendto( udpSocket, (const char*)gpszMsg, strlen(gpszMsg), 0, (const struct sockaddr *)&sockaddr, SOCKADDR_LEN);
-
-	closesocket(udpSocket);
-}
-////////////////////////////////////////////////////////////////////////////
-//
 int main(int argc, char *argv[])
 {
 	int		nRc = 0;
@@ -349,7 +353,7 @@ int main(int argc, char *argv[])
 		else
 		if (gfClientMode)
 		{
-			RunUdpClient();
+			SendUdpMessage( gszDestination, gpszMsg );
 		}
 	}
 
