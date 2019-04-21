@@ -4,10 +4,11 @@ CFLAGS = -W
 
 all:	app
 
-httpd.o: udptest.cpp socketdef.h
+udptest: udptest.cpp socketdef.h
 	cc $(DEFS) $(INC) $(CFLAGS) udptest.cpp -o udptest
 	chmod +x udptest
 
+clean:
+	rm -f ./udptest
+
 app: udptest
-
-
