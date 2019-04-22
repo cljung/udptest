@@ -239,7 +239,7 @@ void signal_handler(int sig)
 {
 	printf("\nCtrl+C pressed - exiting (sig=%d)...\n", sig);
 	SetProcessShutdownFlag(1, (const char*)"Ctrl+C pressed");
-	SendUdpMessage( gszDestination, "Ctrl+C - time to exit");
+	SendUdpMessage( gszDestination, (char*)"Ctrl+C - time to exit");
 }
 ////////////////////////////////////////////////////////////////////////////
 //
